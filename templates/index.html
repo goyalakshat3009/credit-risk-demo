@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Credit Risk Checker</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="site-header fade-in">
+    <h1>💳 Credit Risk Checker</h1>
+    <p>Fill in the details below to get an instant prediction ✨</p>
+  </header>
+
+  <div class="layout">
+
+    <form class="card fade-in delay-1" id="riskForm" autocomplete="off">
+      <h2>📝 Applicant Details</h2>
+
+      <h3 class="group-title">👤 Personal Info</h3>
+      <div class="field-grid">
+        <div class="field">
+          <label for="person_age">🎂 Age</label>
+          <input type="number" id="person_age" name="person_age" placeholder="e.g. 30" min="18" max="100" required>
+        </div>
+        <div class="field">
+          <label for="person_income">💵 Annual income</label>
+          <input type="number" id="person_income" name="person_income" placeholder="e.g. 85000" min="1" required>
+          <p class="hint">In USD (same units the model was trained on)</p>
+        </div>
+        <div class="field">
+          <label for="person_home_ownership">🏠 Home ownership</label>
+          <select id="person_home_ownership" name="person_home_ownership" required>
+            {% set ownership_labels = {'RENT': '🏚️ Rent', 'MORTGAGE': '🏦 Mortgage', 'OWN': '🔑 Own', 'OTHER': '❔ Other'} %}
+            {% for opt in home_ownership_options %}
+            <option value="{{ opt }}">{{ ownership_labels.get(opt, opt) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="person_emp_length">💼 Employment length (yrs)</label>
+          <input type="number" id="person_emp_length" name="person_emp_length" placeholder="e.g. 8" min="0" step="0.1" required>
+        </div>
+      </div>
+
+      <h3 class="group-title">🏷️ Loan Details</h3>
+      <div class="field-grid">
+        <div class="field">
+          <label for="loan_intent">🎯 Loan intent</label>
+          <select id="loan_intent" name="loan_intent" required>
+            {% set intent_labels = {'EDUCATION': '🎓 Education', 'MEDICAL': '🏥 Medical', 'VENTURE': '🚀 Venture', 'PERSONAL': '🙋 Personal', 'DEBTCONSOLIDATION': '📑 Debt consolidation', 'HOMEIMPROVEMENT': '🛠️ Home improvement'} %}
+            {% for opt in loan_intent_options %}
+            <option value="{{ opt }}">{{ intent_labels.get(opt, opt) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="loan_grade">🏅 Loan grade</label>
+          <select id="loan_grade" name="loan_grade" required>
+            {% for opt in loan_grade_options %}
+            <option value="{{ opt }}">Grade {{ opt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="loan_amnt">💰 Loan amount</label>
+          <input type="number" id="loan_amnt" name="loan_amnt" placeholder="e.g. 8000" min="1" required>
+        </div>
+        <div class="field">
+          <label for="loan_int_rate">📈 Interest rate (%)</label>
+          <input type="number" id="loan_int_rate" name="loan_int_rate" placeholder="e.g. 7.5" min="0" step="0.01" required>
+        </div>
+      </div>
+
+      <h3 class="group-title">📜 Credit History</h3>
+      <div class="field-grid">
+        <div class="field">
+          <label for="cb_person_cred_hist_length">📅 Credit history length (yrs)</label>
+          <input type="number" id="cb_person_cred_hist_length" name="cb_person_cred_hist_length" placeholder="e.g. 9" min="0" required>
+        </div>
+        <div class="field">
+          <label for="cb_person_default_on_file">⚠️ Default on file?</label>
+          <select id="cb_person_default_on_file" name="cb_person_default_on_file" required>
+            {% set default_labels = {'N': '✅ No', 'Y': '⚠️ Yes'} %}
+            {% for opt in default_options %}
+            <option value="{{ opt }}">{{ default_labels.get(opt, opt) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <button type="button" class="btn-link" id="loadSample">✨ Load a sample applicant</button>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" id="submitBtn">
+          <span class="spinner" id="submitSpinner"></span>
+          <span id="submitLabel">🔍 Check Risk</span>
+        </button>
+        <button type="reset" class="btn btn-ghost" id="resetBtn">↺ Reset</button>
+      </div>
+
+      <div class="error-banner" id="errorBanner"></div>
+    </form>
+
+    <!-- ===================== RESULT ===================== -->
+    <div class="card fade-in delay-2">
+      <h2>📊 Result</h2>
+
+      <div id="idleState" class="idle-state">
+        <span class="idle-emoji">🔍</span>
+        Your prediction will appear here.
+      </div>
+
+      <div id="resultContent" class="result-box" style="display:none;">
+        <div class="verdict-emoji" id="verdictEmoji">✅</div>
+        <div class="verdict-text" id="verdictText">Good Credit Risk</div>
+
+        <div class="risk-percent">Default probability: <b id="riskPercentValue">0%</b></div>
+
+        <div>
+          <div class="meter-track">
+            <div class="meter-marker" id="meterMarker"></div>
+          </div>
+          <div class="meter-labels">
+            <span>🟢 Safe</span>
+            <span>🔴 Risky</span>
+          </div>
+        </div>
+
+        <div class="bars">
+          <div class="bar-row">
+            <div class="bar-label"><span>✅ Good credit probability</span><span class="val" id="goodProbLabel">0%</span></div>
+            <div class="bar-track"><div class="bar-fill good" id="goodProbBar"></div></div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label"><span>⚠️ Bad credit probability</span><span class="val" id="badProbLabel">0%</span></div>
+            <div class="bar-track"><div class="bar-fill bad" id="badProbBar"></div></div>
+          </div>
+        </div>
+
+        <div class="stat-chip">
+          <span>📊 Loan as % of income</span>
+          <span class="v" id="loanPercentIncomeStat">—</span>
+        </div>
+        <div class="stat-chip">
+          <span>💼 Employment category</span>
+          <span class="v" id="employmentCategoryStat">—</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="site-footer">
+    Made with <span class="heart">❤️</span> by <span class="name">Akshat Goyal</span> 🚀
+  </footer>
+
+</div>
+
+<script>
+const form = document.getElementById('riskForm');
+const submitBtn = document.getElementById('submitBtn');
+const submitSpinner = document.getElementById('submitSpinner');
+const submitLabel = document.getElementById('submitLabel');
+const errorBanner = document.getElementById('errorBanner');
+const idleState = document.getElementById('idleState');
+const resultContent = document.getElementById('resultContent');
+
+const verdictEmoji = document.getElementById('verdictEmoji');
+const verdictText = document.getElementById('verdictText');
+const riskPercentValue = document.getElementById('riskPercentValue');
+const meterMarker = document.getElementById('meterMarker');
+const goodProbBar = document.getElementById('goodProbBar');
+const badProbBar = document.getElementById('badProbBar');
+const goodProbLabel = document.getElementById('goodProbLabel');
+const badProbLabel = document.getElementById('badProbLabel');
+const loanPercentIncomeStat = document.getElementById('loanPercentIncomeStat');
+const employmentCategoryStat = document.getElementById('employmentCategoryStat');
+
+function showError(message) {
+  errorBanner.textContent = '⚠️ ' + message;
+  errorBanner.classList.add('show');
+}
+function clearError() {
+  errorBanner.classList.remove('show');
+  errorBanner.textContent = '';
+}
+
+function renderResult(data) {
+  idleState.style.display = 'none';
+  resultContent.style.display = 'flex';
+
+  // restart the pop-in animation on the emoji each time
+  verdictEmoji.style.animation = 'none';
+  void verdictEmoji.offsetWidth;
+  verdictEmoji.style.animation = 'pop 0.4s ease forwards';
+
+  const isGood = data.prediction === 0;
+  verdictEmoji.textContent = isGood ? '✅' : '⚠️';
+  verdictText.textContent = isGood ? 'Good Credit Risk' : 'Bad Credit Risk';
+  verdictText.className = 'verdict-text ' + (isGood ? 'good' : 'bad');
+
+  riskPercentValue.textContent = data.risk_probability + '%';
+  meterMarker.style.left = data.risk_probability + '%';
+
+  goodProbBar.style.width = data.good_probability + '%';
+  badProbBar.style.width = data.risk_probability + '%';
+  goodProbLabel.textContent = data.good_probability + '%';
+  badProbLabel.textContent = data.risk_probability + '%';
+
+  loanPercentIncomeStat.textContent = data.loan_percent_income + '%';
+  employmentCategoryStat.textContent = data.employment_category === 'Experienced'
+    ? '🧓 Experienced'
+    : '🌱 New';
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearError();
+
+  const payload = {
+    person_age: document.getElementById('person_age').value,
+    person_income: document.getElementById('person_income').value,
+    person_home_ownership: document.getElementById('person_home_ownership').value,
+    person_emp_length: document.getElementById('person_emp_length').value,
+    loan_intent: document.getElementById('loan_intent').value,
+    loan_grade: document.getElementById('loan_grade').value,
+    loan_amnt: document.getElementById('loan_amnt').value,
+    loan_int_rate: document.getElementById('loan_int_rate').value,
+    cb_person_default_on_file: document.getElementById('cb_person_default_on_file').value,
+    cb_person_cred_hist_length: document.getElementById('cb_person_cred_hist_length').value,
+  };
+
+  submitBtn.disabled = true;
+  submitSpinner.classList.add('active');
+  submitLabel.textContent = 'Checking…';
+
+  try {
+    const res = await fetch('/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showError(data.error || 'Something went wrong.');
+    } else {
+      renderResult(data);
+    }
+  } catch (err) {
+    showError('Could not reach the server. Please try again.');
+  } finally {
+    submitBtn.disabled = false;
+    submitSpinner.classList.remove('active');
+    submitLabel.textContent = '🔍 Check Risk';
+  }
+});
+
+document.getElementById('loadSample').addEventListener('click', () => {
+  document.getElementById('person_age').value = 30;
+  document.getElementById('person_income').value = 85000;
+  document.getElementById('person_home_ownership').value = 'MORTGAGE';
+  document.getElementById('person_emp_length').value = 8;
+  document.getElementById('loan_intent').value = 'EDUCATION';
+  document.getElementById('loan_grade').value = 'A';
+  document.getElementById('loan_amnt').value = 8000;
+  document.getElementById('loan_int_rate').value = 7.5;
+  document.getElementById('cb_person_cred_hist_length').value = 9;
+  document.getElementById('cb_person_default_on_file').value = 'N';
+  clearError();
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  clearError();
+});
+</script>
+
+</body>
+</html>
